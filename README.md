@@ -70,6 +70,14 @@ $storage = new storage\Pop3(['host' => 'pop.gmail.com', 'user' => 'test@gmail.co
 Для генерации пароля необходимо создать приложение на странице https://security.google.com/settings/security/apppasswords
 
 
+Протокол imap
+Для получения доступа к функциям imap необходимо установить php5-imap
+```php
+$protocol = new \afinogen89\getmail\protocol\Imap('imap.gmail.com', 993);
+$protocol->login('test89@gmail.com', 'pass');
+$protocol->close();
+```
+
 English version
 -----------
 
