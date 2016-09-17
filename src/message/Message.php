@@ -4,6 +4,7 @@ namespace afinogen89\getmail\message;
 
 /**
  * Class Message
+ *
  * @package storage
  */
 class Message
@@ -37,7 +38,7 @@ class Message
      * @param string $message
      * @param null|int $id
      */
-    public function __construct($header, $message,$id = null)
+    public function __construct($header, $message, $id = null)
     {
         $this->id = $id;
         $this->_header = new Headers($header);
@@ -48,6 +49,7 @@ class Message
 
     /**
      * @param string $path
+     *
      * @return int
      */
     public function saveToFile($path)
@@ -66,7 +68,7 @@ class Message
     /**
      * @return Headers
      */
-    public function getHeader()
+    public function getHeaders()
     {
         return $this->_header;
     }
@@ -82,20 +84,64 @@ class Message
     /**
      * @return Attachment[]
      */
-    public function getAttachment()
+    public function getAttachments()
     {
         return $this->_attachments;
     }
 
     /**
+     * Текст письма
+     *
+     * @return Content|null
+     */
+    public function getMsgBody()
+    {
+        $body = null;
+
+        if (!empty($this->_parts)) {
+            if (count($this->_parts) > 1) {
+                foreach ($this->_parts as $part) {
+                    if ($part->contentType != Content::CT_TEXT_PLAIN && $this->getHeaders()->getMessageContentType() == Content::CT_MULTIPART_ALTERNATIVE) {
+                        $body = $part->getContentDecode();
+                        break;
+                    } else {
+                        $body .= PHP_EOL.$part->getContentDecode();
+                    }
+                }
+            } else {
+                $body = $this->_parts[0]->getContentDecode();
+            }
+        }
+        return $body;
+    }
+
+    /**
+     * Альтернативный текст письма
+     *
+     * @return Content|null
+     */
+    public function getMsgAlternativeBody()
+    {
+        if (!empty($this->_parts) && $this->getHeaders()->getMessageContentType() == Content::CT_MULTIPART_ALTERNATIVE) {
+            foreach ($this->_parts as $part) {
+                if ($part->contentType == Content::CT_TEXT_PLAIN) {
+                    return $part->getContentDecode();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Разбор тела сообщения
+     *
      * @param string $boundary
      * @param string $content
      */
     protected function parserContent($boundary, $content)
     {
         if ($boundary) {
-            $parts = preg_split('#--' . $boundary . '(--)?\s*#si', $content, -1, PREG_SPLIT_NO_EMPTY);
+            $parts = preg_split('#--'.$boundary.'(--)?\s*#si', $content, -1, PREG_SPLIT_NO_EMPTY);
             foreach ($parts as $part) {
                 $part = trim($part);
                 if (empty($part)) {
@@ -103,8 +149,7 @@ class Message
                 }
 
                 if (preg_match('/(Content-Type:)(.*)/i', $part, $math)) {
-                    if (preg_match('/boundary\s*\=\s*["\']?([\w\-\/]+)/i', str_replace("\r\n\t", ' ', $part), $subBoundary))
-                    {
+                    if (preg_match(Headers::BOUNDARY_PATTERN, str_replace("\r\n\t", ' ', $part), $subBoundary)) {
                         if ($subBoundary[1] != $boundary) {
                             $this->parserContent($subBoundary[1], $part);
                         } else {
@@ -114,8 +159,12 @@ class Message
                         $data = explode(';', $math[2]);
                         $type = trim($data[0]);
 
+                        $isAttachment = (strpos($part, 'Content-Disposition: attachment;') !== false);
+
                         //get body message
-                        if ($type == Content::CT_MULTIPART_ALTERNATIVE || $type == Content::CT_TEXT_HTML || $type == Content::CT_TEXT_PLAIN || $type == Content::CT_MESSAGE_DELIVERY) {
+                        if (($type == Content::CT_MULTIPART_ALTERNATIVE || $type == Content::CT_TEXT_HTML || $type == Content::CT_TEXT_PLAIN
+                            || $type == Content::CT_MESSAGE_DELIVERY) && !$isAttachment
+                        ) {
                             $this->parserBodyMessage($part);
                         } elseif ($type == Content::CT_MESSAGE_RFC822) {
                             $this->parserBodyMessage($part);
@@ -142,7 +191,7 @@ class Message
     protected function parserBodyMessage($part)
     {
         preg_match('/Content-Type\:\s*([\w\-\/]+)/si', $part, $contentType);
-        preg_match('/boundary\s*\=\s*["\']?([\w\-\/]+)/si', $part, $boundary);
+        preg_match(Headers::BOUNDARY_PATTERN, $part, $boundary);
 
         $contentType = $contentType[1];
         if (isset($boundary[1])) {
@@ -159,7 +208,12 @@ class Message
         if ($content->contentType == Content::CT_TEXT_HTML || $content->contentType == Content::CT_TEXT_PLAIN) {
             $headers = Headers::toArray($dataContent['header']."\r\n\r\n");
             $data = explode(';', current($headers['content-type']));
-            $content->charset = trim(explode('=',$data[1])[1]);
+            if (count($data) > 1) {
+                $content->charset = trim(explode('=', $data[1])[1]);
+            } else {
+                $content->charset = $this->getHeaders()->getCharset();
+            }
+            
             if (isset($headers['content-transfer-encoding'])) {
                 $content->transferEncoding = trim(current($headers['content-transfer-encoding']));
             }
@@ -168,9 +222,9 @@ class Message
         $this->_parts[] = $content;
 
         if ($content->contentType == Headers::MULTIPART_ALTERNATIVE) {
-            $subParts = preg_split('#--' . $content->boundary . '(--)?\s*#si', $part, -1, PREG_SPLIT_NO_EMPTY);
+            $subParts = preg_split('#--'.$content->boundary.'(--)?\s*#si', $part, -1, PREG_SPLIT_NO_EMPTY);
             array_shift($subParts);
-            foreach($subParts as $item) {
+            foreach ($subParts as $item) {
                 $item = self::splitContent(trim($item));
                 $subContent = new Content();
                 $subContent->boundary = $content->boundary;
@@ -179,7 +233,7 @@ class Message
                 $data = explode(';', current($headers['content-type']));
 
                 $subContent->contentType = trim($data[0]);
-                $subContent->charset = trim(explode('=',$data[1])[1]);
+                $subContent->charset = trim(explode('=', $data[1])[1]);
 
                 $subContent->transferEncoding = trim(current($headers['content-transfer-encoding']));
 
@@ -198,37 +252,77 @@ class Message
         $part = self::splitContent($part);
         $attachment = new Attachment();
         $headers = Headers::toArray($part['header']."\r\n");
+        $attachment->headers = $headers;
 
+        $pattern = '#name\s*(\*\d+\*)?\s*\=(utf-8|koi8-r)?\s*[\\\'\"]*([^\\\'";]+)#si';
+        $name = '';
         if (isset($headers['content-type'])) {
             $data = explode(';', current($headers['content-type']));
 
             $attachment->contentType = trim($data[0]);
 
-            //если нет имени - текущее время
-            $name = isset($data[1]) ? trim(substr($data[1], 6), '"') : time();
-            $tmp = Headers::decodeMimeString($name);
-
-            if (!empty($tmp)) {
-                $attachment->name = $tmp;
+            array_shift($data);
+            if (count($data) == 1) {
+                $name = preg_replace('#.*name\s*\=\s*[\'"]([^\'"]+).*#si', '$1', $data[0]);
+            } elseif (count($data) > 1) {
+                foreach ($data as $value) {
+                    if (preg_match($pattern, $value, $res)) {
+                        $name = $res[3];
+                    }
+                }
             } else {
-                $attachment->name = $name;
+                $name = time();
             }
+            
+            $name = Headers::decodeMimeString($name);
+            $encode = mb_detect_encoding(
+                $name, [
+                    'UTF-8',
+                    'Windows-1251'
+                ]
+            );
+            if ($encode && $encode !== 'UTF-8') {
+                $name = mb_convert_encoding($name, 'UTF-8', $encode);
+            }
+
+            $attachment->name = $name;
         }
 
         if (isset($headers['content-disposition'])) {
             $data = explode(';', current($headers['content-disposition']));
-
             $attachment->contentDisposition = trim($data[0]);
-            if (isset($data[1])) {
-                $name = trim(substr($data[1], 10), '"');
-                $tmp = Headers::decodeMimeString($name);
-                if (!empty($tmp)) {
-                    $attachment->filename = $tmp;
+
+            $tmpName = $data;
+
+            unset($tmpName[0]);
+            foreach ($tmpName as $key => $val) {
+                if (preg_match('/[\w\-]{3,}\=/i', trim($val), $result) && stripos($result[0], 'name') === false) {
+                    unset($tmpName[$key]);
                 } else {
-                    $attachment->filename = $name;
+                    $tmpName[$key] = preg_replace('/(file)?name\s*(\*\d+\*)?\s*\=/i', '', $val);
                 }
+            }
+
+            $tmpName = implode($tmpName);
+            $tmpName = preg_replace('#\s+#s', "\n\n", $tmpName);
+            if (preg_match_all($pattern, $tmpName, $result)) {
+                $name = [];
+                foreach ($result[3] as $v) {
+                    $name[] = $v;
+                }
+
+                $name = implode('', $name);
+                $name = Headers::decodeMimeString($name);
+                $name = urldecode($name);
+
+                if (mb_detect_encoding($name) != 'UTF-8') {
+                    $name = mb_convert_encoding($name, 'UTF-8');
+                }
+
+                $attachment->filename = $name;
             } else {
-                $attachment->filename = $attachment->name;
+                $name = trim(preg_replace('/(file)?name\s*(\*\d+\*)?\s*\=/i', '', $name));
+                $attachment->filename = $name;//Headers::decodeMimeString($name);
             }
         }
 
@@ -247,12 +341,16 @@ class Message
 
     /**
      * @param string $str
+     *
      * @return array
      */
     public static function splitContent($str)
     {
         $data = preg_split('/[\r\n]{3,}/si', $str);
 
-        return ['header' => array_shift($data), 'content' => implode("\r\n", $data)];
+        return [
+            'header' => array_shift($data),
+            'content' => implode("\r\n", $data)
+        ];
     }
 }

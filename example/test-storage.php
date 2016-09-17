@@ -2,15 +2,16 @@
 /**
  * Created by PhpStorm.
  * User: afinogen
- * Date: 16.04.15
- * Time: 15:16
+ * Date: 08.09.16
+ * Time: 14:03
  */
 
 // Composer
 require('../vendor/autoload.php');
 
-$storage = new \afinogen89\getmail\storage\Pop3(
+$storage = \afinogen89\getmail\storage\Storage::init(
     [
+        'storage' => \afinogen89\getmail\storage\Storage::POP3,
         'host' => 'pop.gmail.com',
         'user' => 'test@gmail.com',
         'password' => '123456',

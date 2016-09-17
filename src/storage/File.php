@@ -2,29 +2,44 @@
 
 namespace afinogen89\getmail\storage;
 
+use afinogen89\getmail\message\Message;
 use afinogen89\getmail\protocol;
 
 /**
  * Class File
+ *
  * @package afinogen89\getmail\storage
  */
-class File
+class File implements StorageInterface
 {
     /** @var  protocol\File */
     private $_protocol;
 
-    public function __construct($path)
+    /**
+     * File constructor.
+     * Необходим параметр path для указания папки или файла с которым работать
+     *
+     * @param array $conf
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function __construct(array $conf)
     {
-        $this->_protocol = new protocol\File($path);
+        if (empty($conf['path'])) {
+            throw new \InvalidArgumentException('Need `path` parameters');
+        }
+
+        $this->_protocol = new protocol\File($conf['path']);
     }
 
     /**
      * Получение количества сообщений
+     *
      * @return int
      */
-    public function countMessage()
+    public function countMessages()
     {
-        return $this->_protocol->countMessage();
+        return $this->_protocol->countMessages();
     }
 
     /**
@@ -37,6 +52,7 @@ class File
 
     /**
      * Удаление сообщения
+     *
      * @param int $id
      */
     public function removeMessage($id)
@@ -46,7 +62,9 @@ class File
 
     /**
      * Получение сообщения
+     *
      * @param int $id
+     *
      * @return Message
      */
     public function getMessage($id)
